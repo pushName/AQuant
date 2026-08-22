@@ -167,6 +167,31 @@ const router = createRouter({
                             meta: { requiresAuth: true }
                         }
                     ]
+                },
+                {
+                    path: 'analysis',
+                    name: 'AnalysisRoot',
+                    meta: { requiresAuth: true },
+                    children: [
+                        {
+                            path: 'jobs',
+                            name: 'AnalysisJobs',
+                            component: () => import('@/views/analysis/AnalysisJobs.vue'),
+                            meta: { requiresAuth: true }
+                        },
+                        {
+                            path: 'jobs/:jobId',
+                            name: 'AnalysisJobDetail',
+                            component: () => import('@/views/analysis/AnalysisJobDetail.vue'),
+                            meta: { requiresAuth: true }
+                        },
+                        {
+                            path: 'prompts',
+                            name: 'PromptManagement',
+                            component: () => import('@/views/analysis/PromptManagement.vue'),
+                            meta: { requiresAuth: true }
+                        }
+                    ]
                 }
             ]
         }
