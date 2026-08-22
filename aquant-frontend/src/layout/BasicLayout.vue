@@ -176,7 +176,8 @@ import {
   LoginOutlined,
   MailOutlined,
   MenuOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  RobotOutlined
 } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 import { updateEmail } from '@/api/auth';
@@ -258,6 +259,16 @@ const navigationGroups: NavigationGroup[] = [
       { key: '/article/public', label: '广场' },
       { key: '/article/my', label: '我的笔记' },
       { key: '/finance-sites/index', label: '投资书签' }
+    ]
+  },
+  {
+    key: '/analysis',
+    title: '智能分析',
+    icon: RobotOutlined,
+    popupClassName: 'top-nav-popup top-nav-popup-compact',
+    children: [
+      { key: '/analysis/jobs', label: '分析作业' },
+      { key: '/analysis/prompts', label: '提示词管理' }
     ]
   }
 ];
