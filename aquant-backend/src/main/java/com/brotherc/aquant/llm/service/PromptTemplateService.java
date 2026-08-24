@@ -23,6 +23,8 @@ import java.util.stream.Collectors;
 /** 提示词模板、版本发布和作业快照服务。 */
 @Service
 public class PromptTemplateService {
+    private static final String SOURCE_SYNCED_DESCRIPTION = "从 Python TradingAgents 源码同步的角色提示词";
+    private static final String MANUAL_DESCRIPTION = "人工维护的角色提示词";
     public static final List<String> ROLE_KEYS = Collections.unmodifiableList(Arrays.asList(
             "market", "social", "news", "fundamentals", "policy", "hot_money", "lockup",
             "quality_gate", "bull", "bear", "research_manager", "trader",
@@ -93,6 +95,9 @@ public class PromptTemplateService {
         validateContent(request.getContent(), request.getVariables());
         PromptTemplate template = templateRepository.findByRoleKeyAndTemplateType(roleKey, templateType)
                 .orElseGet(() -> createTemplate(roleKey, templateType));
+        // 用户编辑草稿即视为人工维护，后续源码同步不得覆盖该模板。
+        template.setDescription(MANUAL_DESCRIPTION);
+        templateRepository.save(template);
         int next = versionRepository.findByTemplateIdOrderByVersionNoDesc(template.getId()).stream()
                 .mapToInt(v -> v.getVersionNo() == null ? 0 : v.getVersionNo()).max().orElse(0) + 1;
         PromptVersion version = new PromptVersion();
@@ -181,6 +186,7 @@ public class PromptTemplateService {
         ensureDefaults();
         List<String> imported = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
+        List<String> unchanged = new ArrayList<>();
         for (JsonNode item : catalog) {
             String roleKey = item.path("roleKey").asText();
             String templateType = item.path("templateType").asText();
@@ -194,7 +200,12 @@ public class PromptTemplateService {
             PromptTemplate template = getTemplate(roleKey, templateType);
             PromptVersion published = versionRepository.findByTemplateIdAndStatus(
                     template.getId(), PromptVersionStatus.PUBLISHED).orElse(null);
-            if (published != null && !isGenericDefault(roleKey, published.getContent())) {
+            if (published != null && published.getContent().equals(content)) {
+                unchanged.add(roleKey);
+                continue;
+            }
+            if (published != null && !isGenericDefault(roleKey, published.getContent())
+                    && !isSourceManaged(template)) {
                 skipped.add(roleKey);
                 continue;
             }
@@ -216,15 +227,17 @@ public class PromptTemplateService {
             version.setPublishedAt(LocalDateTime.now());
             versionRepository.save(version);
             template.setPublishedVersion(nextVersion);
-            template.setDescription("从 Python TradingAgents 源码同步的角色提示词");
+            template.setDescription(SOURCE_SYNCED_DESCRIPTION);
             templateRepository.save(template);
             imported.add(roleKey);
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("imported", imported);
         result.put("skipped", skipped);
+        result.put("unchanged", unchanged);
         result.put("importedCount", imported.size());
         result.put("skippedCount", skipped.size());
+        result.put("unchangedCount", unchanged.size());
         return result;
     }
 
@@ -325,6 +338,11 @@ public class PromptTemplateService {
     /** 判断是否为系统首次启动生成的通用占位模板。 */
     private boolean isGenericDefault(String role, String content) {
         return defaultContent(role).equals(content);
+    }
+
+    /** 已由 Python 源码同步的版本允许在源码变化后继续自动更新。 */
+    static boolean isSourceManaged(PromptTemplate template) {
+        return SOURCE_SYNCED_DESCRIPTION.equals(template.getDescription());
     }
 
     private String toJson(Object value) {

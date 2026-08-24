@@ -45,16 +45,25 @@ export interface AnalysisRoleConclusion {
   error?: string | null;
 }
 
+export type AnalysisOutcomeStatus = 'SELECTED' | 'NO_SELECTION' | 'PARTIAL';
+export interface AnalysisSelection {
+  selected: boolean;
+  stage?: string;
+  reasonCode?: string | null;
+  reason?: string;
+}
+
 export interface AnalysisCommitteeDecision {
   recommendation?: string | null;
   confidence?: number | null;
   reasoning?: string;
   bullCase?: string;
   bearCase?: string;
-  agentConsensus?: Record<string, number>;
+  agentConsensus?: Record<string, unknown>;
   kronosDirection?: string | null;
   kronosUp?: boolean;
   kronosChangePct?: number | null;
+  advisoryOnly?: boolean;
 }
 
 export interface AnalysisTickerConclusion {
@@ -62,6 +71,7 @@ export interface AnalysisTickerConclusion {
   date?: string;
   roles: Record<string, AnalysisRoleConclusion>;
   committee?: AnalysisCommitteeDecision | null;
+  selection?: AnalysisSelection | null;
   decision?: {
     signal?: string | null;
     confidence?: number | null;
@@ -69,15 +79,23 @@ export interface AnalysisTickerConclusion {
   };
 }
 
+export interface AnalysisResultSummary {
+  outcomeStatus?: AnalysisOutcomeStatus;
+  requestedCount?: number;
+  selectedCount?: number;
+  analyzedCount?: number;
+  rejectedCount?: number;
+  cachePolicy?: 'REFRESH' | 'CACHE_ALLOWED';
+  resultCount?: number;
+  taCount?: number;
+  kronosCount?: number;
+  message?: string;
+}
+
 export interface AnalysisResult {
   results: unknown[];
   roleConclusions: AnalysisTickerConclusion[];
-  summary?: {
-    resultCount?: number;
-    taCount?: number;
-    kronosCount?: number;
-    message?: string;
-  };
+  summary?: AnalysisResultSummary;
 }
 
 export interface PromptTemplate {
@@ -109,6 +127,24 @@ export function listAnalysisJobs(page = 0, size = 20) {
 
 export function getAnalysisJob(jobId: string) {
   return request.get(`/analysis/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export async function deleteAnalysisJob(jobId: string) {
+  const response = await request.delete(`/analysis/jobs/${encodeURIComponent(jobId)}`);
+  const payload = response.data as { success?: boolean; code?: number; message?: string } | undefined;
+  if (payload?.success !== true) {
+    const error = new Error(payload?.message || '分析作业删除失败，请稍后重试') as Error & {
+      alreadyNotified?: boolean;
+    };
+    // 全局响应拦截器已经展示了标准业务错误，交互层只负责保留列表，
+    // 避免同一失败重复弹出两次；非标准响应仍由页面兜底提示。
+    error.alreadyNotified = payload?.success === false
+      && payload.code !== undefined
+      && payload.code !== 0
+      && payload.code !== 200;
+    throw error;
+  }
+  return response;
 }
 
 export function getAnalysisEvents(jobId: string, afterSeq = 0) {

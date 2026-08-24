@@ -3,6 +3,8 @@ package com.brotherc.aquant.llm.service;
 import com.brotherc.aquant.llm.entity.*;
 import com.brotherc.aquant.llm.model.vo.*;
 import com.brotherc.aquant.llm.repository.*;
+import com.brotherc.aquant.common.exception.BusinessException;
+import com.brotherc.aquant.common.exception.ExceptionEnum;
 import com.brotherc.aquant.common.utils.UserContext;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -13,6 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import jakarta.annotation.PostConstruct;
@@ -26,26 +29,32 @@ import java.util.concurrent.ExecutorService;
 public class AnalysisJobService {
     private final AnalysisJobRepository jobRepository;
     private final AnalysisJobEventRepository eventRepository;
+    private final AnalysisJobPromptSnapshotRepository promptSnapshotRepository;
     private final PromptTemplateService promptTemplateService;
     private final PythonAnalysisClient pythonClient;
     private final ObjectMapper objectMapper;
     private final ExecutorService executor;
+    private final TransactionTemplate transactionTemplate;
     private final long pollMillis;
     private final Map<String, Set<SseEmitter>> emitters = new ConcurrentHashMap<>();
 
     public AnalysisJobService(AnalysisJobRepository jobRepository,
                               AnalysisJobEventRepository eventRepository,
+                              AnalysisJobPromptSnapshotRepository promptSnapshotRepository,
                               PromptTemplateService promptTemplateService,
                               PythonAnalysisClient pythonClient,
                               ObjectMapper objectMapper,
                               ExecutorService analysisExecutor,
+                              TransactionTemplate transactionTemplate,
                               @Value("${analysis.python.poll-millis:1000}") long pollMillis) {
         this.jobRepository = jobRepository;
         this.eventRepository = eventRepository;
+        this.promptSnapshotRepository = promptSnapshotRepository;
         this.promptTemplateService = promptTemplateService;
         this.pythonClient = pythonClient;
         this.objectMapper = objectMapper;
         this.executor = analysisExecutor;
+        this.transactionTemplate = transactionTemplate;
         this.pollMillis = Math.max(200, pollMillis);
     }
 
@@ -93,6 +102,33 @@ public class AnalysisJobService {
 
     public AnalysisJobResponse get(String jobId) {
         return toResponse(findJob(jobId));
+    }
+
+    /** 删除当前用户的终态作业及其事件历史。运行中的作业必须先取消。 */
+    public void delete(String jobId) {
+        AnalysisJob job = findJob(jobId);
+        Long currentUserId = UserContext.requireCurrentUserId();
+        if (!Objects.equals(job.getCreatedBy(), currentUserId)) {
+            throw new IllegalArgumentException("无权删除该分析作业");
+        }
+        if (!isTerminal(job.getStatus())) {
+            throw new IllegalStateException("运行中的作业不能删除，请先取消作业");
+        }
+        if (job.getPythonJobId() != null && !job.getPythonJobId().isBlank()) {
+            try {
+                pythonClient.delete(job.getPythonJobId());
+            } catch (Exception exception) {
+                throw new BusinessException(ExceptionEnum.ANALYSIS_JOB_DELETE_SYNC_FAILED, exception);
+            }
+        }
+        // 远端调用不能放在数据库事务内。只有 Python 已删除（或幂等
+        // 不存在）后，才开启一个短事务原子清理 Java 三类记录。
+        transactionTemplate.executeWithoutResult(ignored -> {
+            eventRepository.deleteByJobId(jobId);
+            promptSnapshotRepository.deleteByJobId(jobId);
+            jobRepository.delete(job);
+        });
+        emitters.remove(jobId);
     }
 
     public String result(String jobId) {
@@ -171,6 +207,9 @@ public class AnalysisJobService {
             Map<String, Object> config = fromJson(job.getConfigJson(), new TypeReference<Map<String, Object>>() {});
             request.put("skipKronos", config.getOrDefault("skipKronos", false));
             request.put("streaming", config.getOrDefault("streaming", false));
+            // AQuant 页面作业每次都必须重新获取数据并执行模型；缓存能力
+            // 仍保留给 Python CLI/内部调用，不向页面暴露旧结果开关。
+            request.put("noCache", true);
             request.put("promptSnapshotHash", job.getPromptSnapshotHash());
             request.put("promptSnapshots", promptTemplateService.snapshot(job.getId()).get("templates"));
             String pythonJobId = job.getPythonJobId();
@@ -238,7 +277,14 @@ public class AnalysisJobService {
             job.setProgress(100);
             JsonNode result = state.path("result").isMissingNode() ? state.path("data").path("result") : state.path("result");
             job.setResultJson(result.toString());
-            addEvent(job, "JOB_STATUS", AnalysisStage.COMPLETED, null, null, "SUCCEEDED", "作业完成", null);
+            String outcome = result.path("summary").path("outcomeStatus").asText("");
+            String message = switch (outcome) {
+                case "NO_SELECTION" -> "作业完成，但没有股票通过最终筛选";
+                case "PARTIAL" -> "作业完成，部分股票分析失败或数据不足";
+                default -> "作业完成";
+            };
+            addEvent(job, "JOB_STATUS", AnalysisStage.COMPLETED, null, null, "SUCCEEDED", message,
+                    result.path("summary").toString());
         } else {
             job.setStatus(AnalysisJobStatus.FAILED);
             job.setErrorMessage(state.path("error").asText(state.path("data").path("error").asText("Python 作业失败")));
@@ -254,8 +300,10 @@ public class AnalysisJobService {
         job.setStatus(AnalysisJobStatus.FAILED);
         job.setErrorMessage(message);
         job.setFinishedAt(LocalDateTime.now());
-        jobRepository.save(job);
+        // 先持久化最终事件，再公开终态，避免删除线程观察到 FAILED 后
+        // 清理记录，而当前工作线程随后又写入一条孤立事件。
         addEvent(job, "JOB_STATUS", job.getStage(), null, null, "FAILED", message, null);
+        jobRepository.save(job);
     }
 
     private void addEvent(AnalysisJob job, String type, AnalysisStage stage, String role, String ticker,

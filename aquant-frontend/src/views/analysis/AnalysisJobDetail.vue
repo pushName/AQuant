@@ -10,12 +10,14 @@
         <a-col :xs="24" :sm="12" :lg="6">
           <div class="committee-panel">
             <div class="committee-stamp" :class="stampClass(selectedCommittee?.recommendation)">
-              <span class="stamp-title">委员会审议</span>
+              <span class="stamp-title">{{ selectedCommittee?.advisoryOnly ? '委员会参考' : '委员会审议' }}</span>
               <strong>{{ committeeRecommendationLabel }}</strong>
               <span v-if="selectedCommittee?.confidence != null" class="stamp-confidence">
                 置信度 {{ formatConfidence(selectedCommittee.confidence) }}
               </span>
             </div>
+            <a-tag v-if="selectedCommittee?.advisoryOnly" color="orange">未入选 · 参考结论</a-tag>
+            <a-tag v-else-if="selectedConclusion?.selection?.selected" color="green">已入选 · 最终结论</a-tag>
             <a-tag v-if="selectedCommittee?.kronosUp" color="green">Kronos 预测上涨</a-tag>
             <a-button type="primary" :disabled="!finalResultItems.length" @click="reportOpen = true">
               <FileSearchOutlined />
@@ -24,6 +26,14 @@
           </div>
         </a-col>
       </a-row>
+      <a-alert
+        v-if="result?.summary?.outcomeStatus"
+        :type="outcomeAlertType"
+        show-icon
+        :message="outcomeTitle"
+        :description="result.summary.message"
+        style="margin-top: 16px"
+      />
       <a-descriptions v-if="job" title="作业参数说明" :column="2" size="small" style="margin-top: 20px">
         <a-descriptions-item label="分析日期">{{ job.date }}（用于确定行情与新闻数据的时间点）</a-descriptions-item>
         <a-descriptions-item label="股票范围">{{ job.tickers.join('、') }}（共 {{ job.total }} 只）</a-descriptions-item>
@@ -31,6 +41,20 @@
         <a-descriptions-item label="Python 服务作业 ID">{{ job.pythonJobId || '等待创建' }}</a-descriptions-item>
       </a-descriptions>
       <a-progress :percent="job?.progress || 0" style="margin: 24px 0" />
+      <a-descriptions v-if="result?.summary" title="筛选结果" :column="4" size="small" bordered>
+        <a-descriptions-item label="请求股票">{{ result.summary.requestedCount ?? job?.total ?? '--' }} 只</a-descriptions-item>
+        <a-descriptions-item label="完成分析">{{ result.summary.analyzedCount ?? result.summary.taCount ?? '--' }} 只</a-descriptions-item>
+        <a-descriptions-item label="最终入选">{{ result.summary.selectedCount ?? result.summary.resultCount ?? 0 }} 只</a-descriptions-item>
+        <a-descriptions-item label="未入选/异常">{{ result.summary.rejectedCount ?? '--' }} 只</a-descriptions-item>
+      </a-descriptions>
+      <a-alert
+        v-if="selectedConclusion?.selection && !selectedConclusion.selection.selected"
+        type="warning"
+        show-icon
+        :message="`当前股票未入选：${selectionReasonLabel(selectedConclusion.selection.reasonCode)}`"
+        :description="selectedConclusion.selection.reason || '未提供具体原因'"
+        style="margin-top: 16px"
+      />
       <a-divider>角色进度说明</a-divider>
       <a-typography-paragraph type="secondary">角色按投研依赖关系执行；状态用于显示当前进展，不展示提示词内容、模型正文或任何凭据。</a-typography-paragraph>
       <a-row :gutter="[12, 12]">
@@ -81,7 +105,7 @@
           />
           <a-space wrap>
             <a-tag :color="signalColor(selectedCommittee?.recommendation)">
-              委员会建议：{{ signalLabel(selectedCommittee?.recommendation) }}
+              {{ selectedCommittee?.advisoryOnly ? '委员会参考建议' : '委员会最终建议' }}：{{ signalLabel(selectedCommittee?.recommendation) }}
             </a-tag>
             <a-tag v-if="selectedCommittee?.kronosDirection" :color="selectedCommittee.kronosUp ? 'green' : 'default'">
               Kronos：{{ kronosDirectionLabel(selectedCommittee.kronosDirection) }}
@@ -95,11 +119,19 @@
             {{ selectedCommittee?.confidence != null ? formatConfidence(selectedCommittee.confidence) : '--' }}
           </a-descriptions-item>
           <a-descriptions-item label="通过最终筛选">
-            {{ result?.summary?.resultCount ?? result?.results.length ?? 0 }} 只
+            {{ selectedConclusion.selection?.selected ? '是' : '否' }}
           </a-descriptions-item>
           <a-descriptions-item label="TA 完成">{{ result?.summary?.taCount ?? '--' }} 只</a-descriptions-item>
           <a-descriptions-item label="Kronos 完成">{{ result?.summary?.kronosCount ?? '--' }} 只</a-descriptions-item>
         </a-descriptions>
+        <a-alert
+          v-if="selectedConclusion.selection && !selectedConclusion.selection.selected"
+          class="report-section"
+          type="warning"
+          show-icon
+          :message="`该委员会结论仅供参考：${selectionReasonLabel(selectedConclusion.selection.reasonCode)}`"
+          :description="selectedConclusion.selection.reason"
+        />
         <a-alert
           v-if="!selectedCommittee"
           class="report-section"
@@ -192,6 +224,23 @@ const selectedConclusion = computed<AnalysisTickerConclusion | undefined>(() => 
 const selectedRoleConclusion = computed<AnalysisRoleConclusion | undefined>(() => selectedRole.value ? selectedConclusion.value?.roles[selectedRole.value] : undefined);
 const finalResultItems = computed(() => roleConclusions.value);
 const selectedCommittee = computed(() => selectedConclusion.value?.committee || undefined);
+const outcomeTitle = computed(() => {
+  const status = result.value?.summary?.outcomeStatus;
+  return status === 'NO_SELECTION' ? '分析完成，但没有股票入选'
+    : status === 'PARTIAL' ? '分析完成，但部分股票未完成'
+      : status === 'SELECTED' ? '分析完成，已有股票入选' : '分析结果';
+});
+const outcomeAlertType = computed(() => result.value?.summary?.outcomeStatus === 'SELECTED' ? 'success' : 'warning');
+const selectionReasonLabel = (code?: string | null) => ({
+  TA_ERROR: 'TA 分析失败',
+  SIGNAL_NOT_ALLOWED: '信号不在允许范围',
+  CONFIDENCE_BELOW_THRESHOLD: '置信度低于阈值',
+  DATA_INSUFFICIENT: '数据不足',
+  DELISTED: '已退市',
+  ABNORMAL_STOCK: '异常股票',
+  METADATA_FILTER: '未通过元数据筛选',
+  PIPELINE_ERROR: '流水线未生成结果',
+}[String(code || '')] || code || '未通过最终筛选');
 const signalLabels: Record<string, string> = {
   BUY: '买入',
   STRONG_BUY: '买入',
