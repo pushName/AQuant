@@ -39,6 +39,12 @@ public class AnalysisJobController {
         return ResponseDTO.success(service.get(jobId));
     }
 
+    @DeleteMapping("/{jobId}")
+    public ResponseDTO<Void> delete(@PathVariable String jobId) {
+        service.delete(jobId);
+        return ResponseDTO.success();
+    }
+
     @GetMapping("/{jobId}/results")
     public ResponseDTO<?> result(@PathVariable String jobId) {
         try { return ResponseDTO.success(objectMapper.readTree(service.result(jobId))); }

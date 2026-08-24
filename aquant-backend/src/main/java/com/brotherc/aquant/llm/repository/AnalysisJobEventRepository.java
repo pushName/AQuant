@@ -11,4 +11,5 @@ public interface AnalysisJobEventRepository extends JpaRepository<AnalysisJobEve
     List<AnalysisJobEvent> findByJobIdAndSequenceNoGreaterThanOrderBySequenceNoAsc(String jobId, Long sequenceNo);
     Optional<AnalysisJobEvent> findTopByJobIdOrderBySequenceNoDesc(String jobId);
     Optional<AnalysisJobEvent> findFirstByJobIdAndSourceSeq(String jobId, Long sourceSeq);
+    void deleteByJobId(String jobId);
 }

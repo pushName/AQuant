@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Collections;
@@ -79,6 +80,28 @@ public class PythonAnalysisClient {
     /** 请求 Python 在安全节点取消作业。 */
     public void cancel(String jobId) {
         post("/v1/analysis/jobs/" + jobId + "/cancel", Collections.emptyMap());
+    }
+
+    /** 幂等删除 Python 终态作业；Python 404 表示作业已经不存在。 */
+    public void delete(String jobId) {
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    baseUrl + "/v1/analysis/jobs/" + jobId,
+                    HttpMethod.DELETE,
+                    HttpEntity.EMPTY,
+                    String.class);
+            JsonNode body = read(response.getBody());
+            if (!body.path("success").asBoolean(false)) {
+                throw new IllegalStateException("Python 分析服务拒绝删除作业");
+            }
+        } catch (HttpStatusCodeException exception) {
+            if (exception.getStatusCode().value() == 404) return;
+            throw new IllegalStateException(
+                    "Python 分析服务删除作业失败（HTTP " + exception.getStatusCode().value() + ")", exception);
+        } catch (Exception exception) {
+            if (exception instanceof IllegalStateException stateException) throw stateException;
+            throw new IllegalStateException("Python 分析服务删除作业失败: " + exception.getMessage(), exception);
+        }
     }
 
     private JsonNode post(String path, Object request) {
