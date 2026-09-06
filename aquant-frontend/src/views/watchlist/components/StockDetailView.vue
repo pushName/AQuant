@@ -520,11 +520,15 @@ const formatWan = (value: number) => {
   return value.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
 };
 
-// OHLC 卡量值：万/亿缩写，避免原始长数字撑宽卡片
+// 历史K线成交量单位为股：换算为手并按万/亿分级缩写，兼顾正确单位与卡片宽度稳定
 const formatOhlcVolume = (val: string | number) => {
   if (val === '-' || val == null || val === '') return '-';
   const num = Number(val);
-  return Number.isFinite(num) ? formatWan(num) : '-';
+  if (!Number.isFinite(num)) return '-';
+  const hands = num / 100;
+  if (hands >= 100000000) return (hands / 100000000).toFixed(2) + '亿手';
+  if (hands >= 10000) return (hands / 10000).toFixed(2) + '万手';
+  return hands.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
 };
 
 const fetchOrderBook = async () => {
@@ -2713,7 +2717,7 @@ onUnmounted(() => {
 }
 
 .qs-item:nth-child(5) .qs-value {
-  min-width: 8ch;
+  min-width: 10ch;
   text-align: right;
 }
 
