@@ -37,7 +37,7 @@ public class StockNotification {
     private String assetType = "STOCK";
 
     /**
-     * 提醒类型 (1: 价格/净值通知, 2: 双均线策略)
+     * 提醒类型 (1: 价格/净值通知, 2: 双均线策略, 3: 网格交易)
      */
     @Column(name = "type")
     private Integer type;

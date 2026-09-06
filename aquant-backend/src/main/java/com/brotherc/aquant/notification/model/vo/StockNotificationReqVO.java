@@ -21,7 +21,7 @@ public class StockNotificationReqVO {
     @Schema(description = "标的类型 (STOCK: 股票, FUND: 基金)")
     private String assetType;
 
-    @Schema(description = "提醒类型 (1: 价格/净值, 2: 双均线策略)")
+    @Schema(description = "提醒类型 (1: 价格/净值, 2: 双均线策略, 3: 网格交易)")
     @NotNull(message = "提醒类型不能为空")
     private Integer type;
 
