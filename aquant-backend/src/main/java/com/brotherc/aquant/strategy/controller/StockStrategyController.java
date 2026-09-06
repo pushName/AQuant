@@ -3,6 +3,7 @@ package com.brotherc.aquant.strategy.controller;
 import com.brotherc.aquant.common.model.dto.ResponseDTO;
 import com.brotherc.aquant.strategy.model.vo.*;
 import com.brotherc.aquant.strategy.service.StockStrategyService;
+import com.brotherc.aquant.strategy.service.StockStrategyBacktestDetailService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class StockStrategyController {
 
     private final StockStrategyService stockStrategyService;
+    private final StockStrategyBacktestDetailService stockStrategyBacktestDetailService;
+
+    @Operation(summary = "股票策略回测详情")
+    @GetMapping("/backtestDetail")
+    public ResponseDTO<StockStrategyBacktestDetailVO> backtestDetail(StockStrategyBacktestDetailReqVO reqVO) {
+        return ResponseDTO.success(stockStrategyBacktestDetailService.getDetail(reqVO));
+    }
 
     @Operation(summary = "双均线策略")
     @GetMapping("/dualMA")

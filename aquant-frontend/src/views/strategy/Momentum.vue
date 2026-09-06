@@ -169,7 +169,10 @@
               <span v-else>-</span>
             </template>
             <template v-if="column.key === 'operation'">
-              <a class="table-text-link" @click="handleChart(record)">行情</a>
+              <a-space :size="12" class="operation-links">
+                <a class="table-text-link" @click="handleChart(record)">行情</a>
+                <a v-if="analysisMode === 'backtest'" class="table-text-link" @click="handleBacktestDetail(record)">回测详情</a>
+              </a-space>
             </template>
           </template>
         </a-table>
@@ -228,14 +231,33 @@
         :stockName="currentStockName"
       />
     </a-drawer>
+
+    <a-modal
+      v-model:visible="backtestDetailVisible"
+      :title="`${currentStockName} (${currentStockCode}) 动量策略回测详情`"
+      width="calc(100vw - 64px)"
+      :style="{ top: '2vh', paddingBottom: 0 }"
+      :body-style="{ height: 'calc(88vh - 55px)', maxHeight: 'calc(88vh - 55px)', overflow: 'hidden', padding: '16px 20px' }"
+      :footer="null"
+      destroy-on-close
+    >
+      <BacktestDetailChart v-if="backtestDetailRequest" :request="backtestDetailRequest" />
+    </a-modal>
   </div>
 </template>
 
 <script lang="ts" setup>
 import { ref, reactive, onMounted, onBeforeUnmount, computed, nextTick } from 'vue';
-import { getMomentumPage, getMomentumBacktestPage, type StockTradeSignalVO, type StockTradeBacktestVO } from '@/api/stock';
+import {
+  getMomentumPage,
+  getMomentumBacktestPage,
+  type StockTradeSignalVO,
+  type StockTradeBacktestVO,
+  type StockStrategyBacktestDetailReqVO,
+} from '@/api/stock';
 import { getWatchlistGroups, type WatchlistGroupVO } from '@/api/watchlist';
 import StockHistoryChart from '@/views/stock-data/components/StockHistoryChart.vue';
+import BacktestDetailChart from './components/BacktestDetailChart.vue';
 import { InfoCircleOutlined } from '@ant-design/icons-vue';
 
 const analysisMode = ref('signal');
@@ -293,6 +315,8 @@ const pagination = reactive({
 const chartVisible = ref(false);
 const currentStockCode = ref('');
 const currentStockName = ref('');
+const backtestDetailVisible = ref(false);
+const backtestDetailRequest = ref<StockStrategyBacktestDetailReqVO>();
 
 // 排序状态
 const sortState = ref<string[]>([]);
@@ -339,7 +363,7 @@ const columns = computed(() => {
     );
   }
 
-  baseColumns.push({ title: '操作', key: 'operation', width: 95 } as any);
+  baseColumns.push({ title: '操作', key: 'operation', width: analysisMode.value === 'backtest' ? 150 : 95 } as any);
   return baseColumns;
 });
 
@@ -515,6 +539,18 @@ const handleChart = (record: StockTradeSignalVO | StockTradeBacktestVO) => {
   currentStockCode.value = record.code;
   currentStockName.value = record.name;
   chartVisible.value = true;
+};
+
+const handleBacktestDetail = (record: StockTradeBacktestVO) => {
+  currentStockCode.value = record.code;
+  currentStockName.value = record.name;
+  backtestDetailRequest.value = {
+    code: record.code,
+    strategyType: 'MOMENTUM',
+    recentYears: queryParams.recentYears,
+    lookbackDays: queryParams.lookbackDays,
+  };
+  backtestDetailVisible.value = true;
 };
 
 onMounted(async () => {
@@ -714,7 +750,14 @@ onBeforeUnmount(() => {
 }
 
 .table-text-link {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
   color: #3b6ea8;
+}
+
+.operation-links :deep(.ant-space-item) {
+  flex: none;
 }
 
 .signal-tag {

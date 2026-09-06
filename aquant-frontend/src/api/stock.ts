@@ -92,6 +92,59 @@ export interface StockTradeBacktestVO {
     lastTime?: string;
 }
 
+export type StockStrategyType = 'DUAL_MA' | 'MOMENTUM' | 'MACD' | 'GRID';
+
+export interface StockStrategyBacktestDetailReqVO {
+    code: string;
+    strategyType: StockStrategyType;
+    recentYears: number;
+    startDate?: string;
+    endDate?: string;
+    maShort?: number;
+    maLong?: number;
+    lookbackDays?: number;
+    fastPeriod?: number;
+    slowPeriod?: number;
+    signalPeriod?: number;
+    gridRate?: number;
+    gridCount?: number;
+}
+
+export interface StockStrategyIndicatorSeriesVO {
+    name: string;
+    type: 'line' | 'bar';
+    values: Array<number | null>;
+}
+
+export interface StockStrategyTradePointVO {
+    tradeDate: string;
+    price: number;
+    capital: number;
+    signal: 'BUY' | 'SELL';
+    sequence: number;
+}
+
+export interface StockStrategyBacktestDetailVO {
+    code: string;
+    name: string;
+    strategyType: StockStrategyType;
+    strategyName: string;
+    initialCapital: number;
+    finalCapital: number;
+    tradeDates: string[];
+    closePrices: number[];
+    capitalValues: number[];
+    indicatorSeries: StockStrategyIndicatorSeriesVO[];
+    tradePoints: StockStrategyTradePointVO[];
+}
+
+export const getStockStrategyBacktestDetail = (params: StockStrategyBacktestDetailReqVO) => {
+    return api.get<ResponseDTO<StockStrategyBacktestDetailVO>>('/stockStrategy/backtestDetail', {
+        params,
+        timeout: 60000
+    });
+};
+
 export interface StockQuotePageReqVO {
     keyword?: string;
     code?: string;
