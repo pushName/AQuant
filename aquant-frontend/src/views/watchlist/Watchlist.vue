@@ -623,6 +623,7 @@
                       <a-select-option :value="1">{{ currentNotiAssetType === 'FUND' ? '净值' : '价格' }}</a-select-option>
                       <a-select-option :value="2">双均线策略</a-select-option>
                       <a-select-option :value="3">网格交易</a-select-option>
+                      <a-select-option :value="4">MACD策略</a-select-option>
                     </a-select>
                   </a-col>
                   
@@ -668,6 +669,19 @@
                       />
                       <span class="notification-field-label">层数</span>
                       <a-input-number v-model:value="item.gridCount" :min="1" :max="50" style="width: 72px;" />
+                    </div>
+                    <div v-else-if="item.type === 4" class="macd-notification-fields">
+                      <a-select v-model:value="item.condition" style="width: 96px;">
+                        <a-select-option value="BOTH">双向</a-select-option>
+                        <a-select-option value="UP">金叉</a-select-option>
+                        <a-select-option value="DOWN">死叉</a-select-option>
+                      </a-select>
+                      <span class="notification-field-label">参数</span>
+                      <a-input-number v-model:value="item.fastPeriod" :min="1" :precision="0" style="width: 66px;" />
+                      <span class="notification-field-separator">/</span>
+                      <a-input-number v-model:value="item.slowPeriod" :min="2" :precision="0" style="width: 66px;" />
+                      <span class="notification-field-separator">/</span>
+                      <a-input-number v-model:value="item.signalPeriod" :min="1" :precision="0" style="width: 66px;" />
                     </div>
                   </a-col>
 
@@ -1406,6 +1420,11 @@ const processNotiList = (list: any[]) => {
           item.condition = p.condition || 'BOTH';
           item.gridPercent = p.gridPercent || 3;
           item.gridCount = p.gridCount || 5;
+        } else if (item.type === 4) {
+          item.condition = p.condition || 'BOTH';
+          item.fastPeriod = p.fastPeriod || 12;
+          item.slowPeriod = p.slowPeriod || 26;
+          item.signalPeriod = p.signalPeriod || 9;
         }
       } catch (e) {
         if (item.type === 1) item.condition = 'UP';
@@ -1417,6 +1436,11 @@ const processNotiList = (list: any[]) => {
           item.condition = 'BOTH';
           item.gridPercent = 3;
           item.gridCount = 5;
+        } else if (item.type === 4) {
+          item.condition = 'BOTH';
+          item.fastPeriod = 12;
+          item.slowPeriod = 26;
+          item.signalPeriod = 9;
         }
       }
     } else {
@@ -1429,6 +1453,11 @@ const processNotiList = (list: any[]) => {
         item.condition = 'BOTH';
         item.gridPercent = 3;
         item.gridCount = 5;
+      } else if (item.type === 4) {
+        item.condition = 'BOTH';
+        item.fastPeriod = 12;
+        item.slowPeriod = 26;
+        item.signalPeriod = 9;
       }
     }
     item.notifyStrategy = item.notifyStrategy || 1;
@@ -1472,6 +1501,9 @@ const handleAddNoti = () => {
     maLong: 20,
     gridPercent: 3,
     gridCount: 5,
+    fastPeriod: 12,
+    slowPeriod: 26,
+    signalPeriod: 9,
     params: '',
     isEnabled: 1,
     notifyStrategy: 1
@@ -1489,6 +1521,11 @@ const handleNotiTypeChange = (item: any) => {
     item.condition = 'BOTH';
     item.gridPercent = item.gridPercent || 3;
     item.gridCount = item.gridCount || 5;
+  } else if (item.type === 4) {
+    item.condition = 'BOTH';
+    item.fastPeriod = item.fastPeriod || 12;
+    item.slowPeriod = item.slowPeriod || 26;
+    item.signalPeriod = item.signalPeriod || 9;
   }
 };
 
@@ -1516,6 +1553,15 @@ const handleSaveNoti = async (item: any) => {
       message.warning('网格层数需为1至50');
       return;
     }
+  } else if (item.type === 4) {
+    if (!item.fastPeriod || !item.slowPeriod || !item.signalPeriod) {
+      message.warning('请完整填写MACD周期');
+      return;
+    }
+    if (item.fastPeriod >= item.slowPeriod) {
+      message.warning('MACD慢线周期必须大于快线周期');
+      return;
+    }
   }
 
   if (item.type === 1) {
@@ -1531,6 +1577,13 @@ const handleSaveNoti = async (item: any) => {
       condition: item.condition || 'BOTH',
       gridPercent: item.gridPercent,
       gridCount: Math.floor(item.gridCount)
+    });
+  } else if (item.type === 4) {
+    item.params = JSON.stringify({
+      condition: item.condition || 'BOTH',
+      fastPeriod: Math.floor(item.fastPeriod),
+      slowPeriod: Math.floor(item.slowPeriod),
+      signalPeriod: Math.floor(item.signalPeriod)
     });
   }
 
@@ -2640,6 +2693,18 @@ watch(() => groups.value.length, async () => {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+}
+
+.macd-notification-fields {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.notification-field-separator {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
 }
 
 .notification-field-label {

@@ -19,7 +19,7 @@ public class StockNotificationVO {
     @Schema(description = "标的类型 (STOCK: 股票, FUND: 基金)")
     private String assetType;
 
-    @Schema(description = "提醒类型 (1: 价格/净值, 2: 双均线策略, 3: 网格交易)")
+    @Schema(description = "提醒类型 (1: 价格/净值, 2: 双均线策略, 3: 网格交易, 4: MACD策略)")
     private Integer type;
 
     @Schema(description = "价格/净值通知阈值")
