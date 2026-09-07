@@ -14,6 +14,9 @@ import java.time.LocalDateTime;
 @Table(name = "stock_valuation_metrics")
 public class StockValuationMetrics {
 
+    /**
+     * 主键 ID
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -381,7 +384,7 @@ public class StockValuationMetrics {
     /**
      * 估值结论
      */
-    @Column(name = "conclusion", length = 500)
+    @Column(name = "conclusion")
     private String conclusion;
 
     /**

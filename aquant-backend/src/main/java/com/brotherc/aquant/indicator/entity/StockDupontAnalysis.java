@@ -14,6 +14,9 @@ import java.time.LocalDateTime;
 @Table(name = "stock_dupont_analysis")
 public class StockDupontAnalysis {
 
+    /**
+     * 主键 ID
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

@@ -8,7 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * 股票资产负债表实体类
+ * 股票资产负债表
  */
 @Data
 @Entity
