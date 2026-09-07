@@ -162,7 +162,10 @@
               <span v-else>-</span>
             </template>
             <template v-if="column.key === 'operation'">
-              <a class="table-text-link" @click="handleChart(record)">行情</a>
+              <a-space :size="12">
+                <a class="table-text-link" @click="handleChart(record)">行情</a>
+                <a v-if="analysisMode === 'backtest'" class="table-text-link" @click="handleBacktestDetail(record)">回测详情</a>
+              </a-space>
             </template>
           </template>
         </a-table>
@@ -220,14 +223,33 @@
         :stockName="currentStockName"
       />
     </a-drawer>
+
+    <a-modal
+      v-model:visible="backtestDetailVisible"
+      :title="`${currentStockName} (${currentStockCode}) 双均线回测详情`"
+      width="calc(100vw - 64px)"
+      :style="{ top: '2vh', paddingBottom: 0 }"
+      :body-style="{ height: 'calc(88vh - 55px)', maxHeight: 'calc(88vh - 55px)', overflow: 'hidden', padding: '16px 20px' }"
+      :footer="null"
+      destroy-on-close
+    >
+      <BacktestDetailChart v-if="backtestDetailRequest" :request="backtestDetailRequest" />
+    </a-modal>
   </div>
 </template>
 
 <script lang="ts" setup>
 import { ref, reactive, onMounted, computed } from 'vue';
-import { getDualMAPage, getDualMABacktestPage, type StockTradeBacktestVO, type StockTradeSignalVO } from '@/api/stock';
+import {
+  getDualMAPage,
+  getDualMABacktestPage,
+  type StockTradeBacktestVO,
+  type StockTradeSignalVO,
+  type StockStrategyBacktestDetailReqVO,
+} from '@/api/stock';
 import { getWatchlistGroups, type WatchlistGroupVO } from '@/api/watchlist';
 import StockHistoryChart from '@/views/stock-data/components/StockHistoryChart.vue';
+import BacktestDetailChart from './components/BacktestDetailChart.vue';
 import { InfoCircleOutlined } from '@ant-design/icons-vue';
 
 const analysisMode = ref('signal');
@@ -282,6 +304,8 @@ const pagination = reactive({
 const chartVisible = ref(false);
 const currentStockCode = ref('');
 const currentStockName = ref('');
+const backtestDetailVisible = ref(false);
+const backtestDetailRequest = ref<StockStrategyBacktestDetailReqVO>();
 
 // 排序状态
 const sortState = ref<string[]>([]);
@@ -314,7 +338,7 @@ const columns = computed(() => {
     );
   }
 
-  baseColumns.push({ title: '操作', key: 'operation', width: 95 } as any);
+  baseColumns.push({ title: '操作', key: 'operation', width: analysisMode.value === 'backtest' ? 150 : 95 } as any);
   return baseColumns;
 });
 
@@ -429,6 +453,19 @@ const handleChart = (record: StockTradeSignalVO | StockTradeBacktestVO) => {
   currentStockCode.value = record.code;
   currentStockName.value = record.name;
   chartVisible.value = true;
+};
+
+const handleBacktestDetail = (record: StockTradeBacktestVO) => {
+  currentStockCode.value = record.code;
+  currentStockName.value = record.name;
+  backtestDetailRequest.value = {
+    code: record.code,
+    strategyType: 'DUAL_MA',
+    recentYears: queryParams.recentYears,
+    maShort: queryParams.maShort,
+    maLong: queryParams.maLong,
+  };
+  backtestDetailVisible.value = true;
 };
 
 onMounted(async () => {

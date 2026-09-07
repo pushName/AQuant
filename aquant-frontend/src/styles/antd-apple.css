@@ -1500,3 +1500,38 @@
   border-color: var(--color-border) !important;
   color: var(--color-text-secondary) !important;
 }
+
+/* 日期范围中段使用浅色，避免黑色主题强调色遮住日期。 */
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-in-range::before,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-start:not(.ant-picker-cell-range-start-single)::before,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-end:not(.ant-picker-cell-range-end-single)::before {
+  background: #f1f3f5 !important;
+}
+
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-in-range .ant-picker-cell-inner {
+  color: #334155 !important;
+}
+
+.ant-picker-dropdown .ant-picker-cell-in-view:hover .ant-picker-cell-inner,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-hover-start .ant-picker-cell-inner,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-hover-end .ant-picker-cell-inner {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+.ant-picker-dropdown .ant-picker-date-panel .ant-picker-cell-in-view.ant-picker-cell-in-range.ant-picker-cell-range-hover-start .ant-picker-cell-inner::after,
+.ant-picker-dropdown .ant-picker-date-panel .ant-picker-cell-in-view.ant-picker-cell-in-range.ant-picker-cell-range-hover-end .ant-picker-cell-inner::after {
+  background: #000000 !important;
+}
+
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-start .ant-picker-cell-inner,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-end .ant-picker-cell-inner {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-in-range.ant-picker-cell-range-hover::before,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-start.ant-picker-cell-range-hover::before,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-end.ant-picker-cell-range-hover::before {
+  background: #e5e7eb !important;
+}

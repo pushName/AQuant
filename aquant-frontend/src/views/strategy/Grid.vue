@@ -145,7 +145,10 @@
               <span v-else>-</span>
             </template>
             <template v-else-if="column.key === 'operation'">
-              <a class="table-text-link" @click="handleChart(record)">行情</a>
+              <a-space :size="12" class="operation-links">
+                <a class="table-text-link" @click="handleChart(record)">行情</a>
+                <a v-if="analysisMode === 'backtest'" class="table-text-link" @click="handleBacktestDetail(record)">回测详情</a>
+              </a-space>
             </template>
           </template>
         </a-table>
@@ -182,6 +185,18 @@
     >
       <StockHistoryChart :stock-code="currentStockCode" :stock-name="currentStockName" />
     </a-drawer>
+
+    <a-modal
+      v-model:visible="backtestDetailVisible"
+      :title="`${currentStockName} (${currentStockCode}) 网格交易回测详情`"
+      width="calc(100vw - 64px)"
+      :style="{ top: '2vh', paddingBottom: 0 }"
+      :body-style="{ height: 'calc(88vh - 55px)', maxHeight: 'calc(88vh - 55px)', overflow: 'hidden', padding: '16px 20px' }"
+      :footer="null"
+      destroy-on-close
+    >
+      <BacktestDetailChart v-if="backtestDetailRequest" :request="backtestDetailRequest" />
+    </a-modal>
   </div>
 </template>
 
@@ -193,9 +208,11 @@ import {
   getGridPage,
   type StockTradeBacktestVO,
   type StockTradeSignalVO,
+  type StockStrategyBacktestDetailReqVO,
 } from '@/api/stock';
 import { getWatchlistGroups, type WatchlistGroupVO } from '@/api/watchlist';
 import StockHistoryChart from '@/views/stock-data/components/StockHistoryChart.vue';
+import BacktestDetailChart from './components/BacktestDetailChart.vue';
 
 type AnalysisMode = 'signal' | 'backtest';
 
@@ -211,6 +228,8 @@ const watchlistGroups = ref<WatchlistGroupVO[]>([]);
 const chartVisible = ref(false);
 const currentStockCode = ref('');
 const currentStockName = ref('');
+const backtestDetailVisible = ref(false);
+const backtestDetailRequest = ref<StockStrategyBacktestDetailReqVO>();
 const reliabilityOptions = ['高', '中', '低', '低(方差0)', '样本不足'];
 const gridPriceKeys = new Set(['gridReferencePrice', 'lowerGridPrice', 'upperGridPrice']);
 
@@ -258,7 +277,7 @@ const columns = computed(() => {
       { title: '累计收益率', dataIndex: 'totalReturn', key: 'totalReturn', sorter: true, defaultSortOrder: 'descend' },
     );
   }
-  result.push({ title: '操作', key: 'operation', width: 90 });
+  result.push({ title: '操作', key: 'operation', width: analysisMode.value === 'backtest' ? 150 : 90 });
   return result;
 });
 
@@ -338,6 +357,19 @@ const handleChart = (record: StockTradeSignalVO | StockTradeBacktestVO) => {
   currentStockCode.value = record.code;
   currentStockName.value = record.name;
   chartVisible.value = true;
+};
+
+const handleBacktestDetail = (record: StockTradeBacktestVO) => {
+  currentStockCode.value = record.code;
+  currentStockName.value = record.name;
+  backtestDetailRequest.value = {
+    code: record.code,
+    strategyType: 'GRID',
+    recentYears: queryParams.recentYears,
+    gridRate: queryParams.gridPercent / 100,
+    gridCount: queryParams.gridCount,
+  };
+  backtestDetailVisible.value = true;
 };
 
 const getSignalLabel = (signal: string) => ({

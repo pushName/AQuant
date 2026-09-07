@@ -89,7 +89,13 @@
   color: #94a3b8 !important;
   background-color: #f1f5f9 !important;
 }
-.table-text-link { color: #3b6ea8; }
+.table-text-link {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  color: #3b6ea8;
+}
+.operation-links :deep(.ant-space-item) { flex: none; }
 .strategy-info { color: #475569; line-height: 1.75; }
 .strategy-info h3 { margin: 18px 0 8px; color: #1e293b; font-size: 15px; }
 .strategy-info h3:first-child { margin-top: 0; }

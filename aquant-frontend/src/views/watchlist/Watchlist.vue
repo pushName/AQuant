@@ -619,9 +619,11 @@
               <div style="width: 100%; padding: 8px 0;">
                 <a-row :gutter="12" align="middle">
                   <a-col :span="4">
-                    <a-select v-model:value="item.type" style="width: 100%;">
+                    <a-select v-model:value="item.type" style="width: 100%;" @change="handleNotiTypeChange(item)">
                       <a-select-option :value="1">{{ currentNotiAssetType === 'FUND' ? '净值' : '价格' }}</a-select-option>
                       <a-select-option :value="2">双均线策略</a-select-option>
+                      <a-select-option :value="3">网格交易</a-select-option>
+                      <a-select-option :value="4">MACD策略</a-select-option>
                     </a-select>
                   </a-col>
                   
@@ -649,6 +651,38 @@
                       <span style="font-size: 11px; color: #999;">/</span>
                       <a-input-number v-model:value="item.maLong" :min="3" style="width: 100px;" />
                     </div>
+                    <div v-else-if="item.type === 3" class="grid-notification-fields">
+                      <a-select v-model:value="item.condition" style="width: 96px;">
+                        <a-select-option value="BOTH">双向</a-select-option>
+                        <a-select-option value="BUY">仅买入</a-select-option>
+                        <a-select-option value="SELL">仅卖出</a-select-option>
+                      </a-select>
+                      <span class="notification-field-label">间距</span>
+                      <a-input-number
+                        v-model:value="item.gridPercent"
+                        :min="0.1"
+                        :max="49.9"
+                        :step="0.5"
+                        :precision="1"
+                        addon-after="%"
+                        style="width: 112px;"
+                      />
+                      <span class="notification-field-label">层数</span>
+                      <a-input-number v-model:value="item.gridCount" :min="1" :max="50" style="width: 72px;" />
+                    </div>
+                    <div v-else-if="item.type === 4" class="macd-notification-fields">
+                      <a-select v-model:value="item.condition" style="width: 96px;">
+                        <a-select-option value="BOTH">双向</a-select-option>
+                        <a-select-option value="UP">金叉</a-select-option>
+                        <a-select-option value="DOWN">死叉</a-select-option>
+                      </a-select>
+                      <span class="notification-field-label">参数</span>
+                      <a-input-number v-model:value="item.fastPeriod" :min="1" :precision="0" style="width: 66px;" />
+                      <span class="notification-field-separator">/</span>
+                      <a-input-number v-model:value="item.slowPeriod" :min="2" :precision="0" style="width: 66px;" />
+                      <span class="notification-field-separator">/</span>
+                      <a-input-number v-model:value="item.signalPeriod" :min="1" :precision="0" style="width: 66px;" />
+                    </div>
                   </a-col>
 
                   <a-col :span="4">
@@ -656,7 +690,8 @@
                       <a-tooltip placement="top" :overlayStyle="{ maxWidth: '400px' }">
                         <template #title>
                           <div>每日：触发通知后，今日不再重复报警</div>
-                          <div>重复：条件满足时持续报警，间隔1分钟</div>
+                          <div v-if="item.type === 3">重复：每次跨越新网格均可报警，最短间隔1分钟</div>
+                          <div v-else>重复：再次触发条件时可继续报警，最短间隔1分钟</div>
                         </template>
                         <span style="font-size: 12px; color: #999; white-space: nowrap; cursor: help;">策略:</span>
                         <question-circle-outlined style="font-size: 12px; color: #ccc; cursor: help; margin-left: 2px;" />
@@ -1381,6 +1416,15 @@ const processNotiList = (list: any[]) => {
           item.condition = p.condition || 'UP';
           item.maShort = p.maShort || 5;
           item.maLong = p.maLong || 20;
+        } else if (item.type === 3) {
+          item.condition = p.condition || 'BOTH';
+          item.gridPercent = p.gridPercent || 3;
+          item.gridCount = p.gridCount || 5;
+        } else if (item.type === 4) {
+          item.condition = p.condition || 'BOTH';
+          item.fastPeriod = p.fastPeriod || 12;
+          item.slowPeriod = p.slowPeriod || 26;
+          item.signalPeriod = p.signalPeriod || 9;
         }
       } catch (e) {
         if (item.type === 1) item.condition = 'UP';
@@ -1388,6 +1432,15 @@ const processNotiList = (list: any[]) => {
           item.condition = 'UP';
           item.maShort = 5;
           item.maLong = 20;
+        } else if (item.type === 3) {
+          item.condition = 'BOTH';
+          item.gridPercent = 3;
+          item.gridCount = 5;
+        } else if (item.type === 4) {
+          item.condition = 'BOTH';
+          item.fastPeriod = 12;
+          item.slowPeriod = 26;
+          item.signalPeriod = 9;
         }
       }
     } else {
@@ -1396,6 +1449,15 @@ const processNotiList = (list: any[]) => {
         item.condition = 'UP';
         item.maShort = 5;
         item.maLong = 20;
+      } else if (item.type === 3) {
+        item.condition = 'BOTH';
+        item.gridPercent = 3;
+        item.gridCount = 5;
+      } else if (item.type === 4) {
+        item.condition = 'BOTH';
+        item.fastPeriod = 12;
+        item.slowPeriod = 26;
+        item.signalPeriod = 9;
       }
     }
     item.notifyStrategy = item.notifyStrategy || 1;
@@ -1437,10 +1499,34 @@ const handleAddNoti = () => {
     condition: 'UP',
     maShort: 5,
     maLong: 20,
+    gridPercent: 3,
+    gridCount: 5,
+    fastPeriod: 12,
+    slowPeriod: 26,
+    signalPeriod: 9,
     params: '',
     isEnabled: 1,
     notifyStrategy: 1
   });
+};
+
+const handleNotiTypeChange = (item: any) => {
+  if (item.type === 1) {
+    item.condition = 'UP';
+  } else if (item.type === 2) {
+    item.condition = 'UP';
+    item.maShort = item.maShort || 5;
+    item.maLong = item.maLong || 20;
+  } else if (item.type === 3) {
+    item.condition = 'BOTH';
+    item.gridPercent = item.gridPercent || 3;
+    item.gridCount = item.gridCount || 5;
+  } else if (item.type === 4) {
+    item.condition = 'BOTH';
+    item.fastPeriod = item.fastPeriod || 12;
+    item.slowPeriod = item.slowPeriod || 26;
+    item.signalPeriod = item.signalPeriod || 9;
+  }
 };
 
 const handleSaveNoti = async (item: any) => {
@@ -1458,6 +1544,24 @@ const handleSaveNoti = async (item: any) => {
       message.warning('长线周期必须大于短线周期');
       return;
     }
+  } else if (item.type === 3) {
+    if (!item.gridPercent || item.gridPercent <= 0 || item.gridPercent >= 50) {
+      message.warning('网格间距需大于0且小于50%');
+      return;
+    }
+    if (!item.gridCount || item.gridCount < 1 || item.gridCount > 50) {
+      message.warning('网格层数需为1至50');
+      return;
+    }
+  } else if (item.type === 4) {
+    if (!item.fastPeriod || !item.slowPeriod || !item.signalPeriod) {
+      message.warning('请完整填写MACD周期');
+      return;
+    }
+    if (item.fastPeriod >= item.slowPeriod) {
+      message.warning('MACD慢线周期必须大于快线周期');
+      return;
+    }
   }
 
   if (item.type === 1) {
@@ -1467,6 +1571,19 @@ const handleSaveNoti = async (item: any) => {
       condition: item.condition || 'UP',
       maShort: Math.floor(item.maShort),
       maLong: Math.floor(item.maLong)
+    });
+  } else if (item.type === 3) {
+    item.params = JSON.stringify({
+      condition: item.condition || 'BOTH',
+      gridPercent: item.gridPercent,
+      gridCount: Math.floor(item.gridCount)
+    });
+  } else if (item.type === 4) {
+    item.params = JSON.stringify({
+      condition: item.condition || 'BOTH',
+      fastPeriod: Math.floor(item.fastPeriod),
+      slowPeriod: Math.floor(item.slowPeriod),
+      signalPeriod: Math.floor(item.signalPeriod)
     });
   }
 
@@ -2569,6 +2686,30 @@ watch(() => groups.value.length, async () => {
   height: auto;
   line-height: 1;
   padding: 4px 8px;
+}
+
+.grid-notification-fields {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.macd-notification-fields {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.notification-field-separator {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+
+.notification-field-label {
+  color: var(--color-text-secondary);
+  font-size: 12px;
 }
 </style>
 

@@ -10,6 +10,11 @@ import com.brotherc.aquant.common.enums.TradeSignal;
 import com.brotherc.aquant.common.exception.ExceptionEnum;
 import com.brotherc.aquant.common.enums.NotificationType;
 import com.brotherc.aquant.common.enums.PriceAlertCondition;
+import com.brotherc.aquant.notification.model.dto.GridAlertParams;
+import com.brotherc.aquant.notification.model.dto.GridRuntimeState;
+import com.brotherc.aquant.notification.model.dto.GridTransition;
+import com.brotherc.aquant.notification.model.dto.MacdAlertParams;
+import com.brotherc.aquant.notification.model.dto.MacdRuntimeState;
 import com.brotherc.aquant.notification.model.vo.StockNotificationReqVO;
 import com.brotherc.aquant.notification.model.vo.StockNotificationVO;
 import com.brotherc.aquant.fund.repository.StockFundNetValueRepository;
@@ -34,9 +39,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -46,8 +53,19 @@ import java.util.concurrent.ConcurrentMap;
 public class StockNotificationService {
 
     private static final String CONDITION = "condition";
+    private static final String GRID_PERCENT = "gridPercent";
+    private static final String GRID_COUNT = "gridCount";
+    private static final String GRID_DIRECTION_BOTH = "BOTH";
+    private static final String GRID_DIRECTION_BUY = "BUY";
+    private static final String GRID_DIRECTION_SELL = "SELL";
+    private static final int GRID_HISTORY_DAYS = 120;
+    private static final String MACD_FAST_PERIOD = "fastPeriod";
+    private static final String MACD_SLOW_PERIOD = "slowPeriod";
+    private static final String MACD_SIGNAL_PERIOD = "signalPeriod";
     private static final long OBSERVED_PRICE_TTL_MILLIS = 7L * 24 * 60 * 60 * 1000;
     private final ConcurrentMap<Long, ObservedPrice> lastObservedPriceMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Long, GridRuntimeState> gridRuntimeStateMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Long, MacdRuntimeState> macdRuntimeStateMap = new ConcurrentHashMap<>();
 
     @Value("${aquant.stock.max-notification-stock-count:600}")
     private Integer maxNotificationStockCount;
@@ -97,6 +115,10 @@ public class StockNotificationService {
         notification.setThresholdValue(reqVO.getThresholdValue());
         if (NotificationType.PRICE.getType().equals(reqVO.getType())) {
             notification.setParams(normalizePriceAlertParams(reqVO.getParams()));
+        } else if (NotificationType.GRID.getType().equals(reqVO.getType())) {
+            notification.setParams(normalizeGridAlertParams(reqVO.getParams()));
+        } else if (NotificationType.MACD.getType().equals(reqVO.getType())) {
+            notification.setParams(normalizeMacdAlertParams(reqVO.getParams()));
         } else {
             notification.setParams(reqVO.getParams());
         }
@@ -107,7 +129,7 @@ public class StockNotificationService {
         checkStockCountLimit(notification);
 
         StockNotification saved = notificationRepository.save(notification);
-        clearLastObservedPrice(saved.getId());
+        clearRuntimeState(saved.getId());
     }
 
     private void checkDuplicate(StockNotification notification, Long userId) {
@@ -152,7 +174,7 @@ public class StockNotificationService {
         StockNotification notification = notificationRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(ExceptionEnum.SYS_CHECK_ERROR::toException);
         notificationRepository.delete(notification);
-        clearLastObservedPrice(notification.getId());
+        clearRuntimeState(notification.getId());
     }
 
     /**
@@ -171,6 +193,10 @@ public class StockNotificationService {
                     checkThresholdAlert(config, stockName, latestPrice, "当前价", "价格通知");
                 } else if (config.getType().equals(NotificationType.DUAL_MA.getType())) {
                     checkStockDualMAAlert(config, stockName, latestPrice);
+                } else if (config.getType().equals(NotificationType.GRID.getType())) {
+                    checkStockGridAlert(config, stockName, latestPrice);
+                } else if (config.getType().equals(NotificationType.MACD.getType())) {
+                    checkStockMacdAlert(config, stockName, latestPrice);
                 }
             } catch (Exception e) {
                 log.error("Failed to check notification for user {}: {}", config.getUserId(), e.getMessage());
@@ -194,6 +220,10 @@ public class StockNotificationService {
                     checkThresholdAlert(config, fundName, latestNetValue, "最新净值", "净值通知");
                 } else if (config.getType().equals(NotificationType.DUAL_MA.getType())) {
                     checkFundDualMAAlert(config, fundName, latestNetValue);
+                } else if (config.getType().equals(NotificationType.GRID.getType())) {
+                    checkFundGridAlert(config, fundName, latestNetValue);
+                } else if (config.getType().equals(NotificationType.MACD.getType())) {
+                    checkFundMacdAlert(config, fundName, latestNetValue);
                 }
             } catch (Exception e) {
                 log.error("Failed to check fund notification for user {}: {}", config.getUserId(), e.getMessage());
@@ -343,6 +373,276 @@ public class StockNotificationService {
         }
     }
 
+    private void checkStockMacdAlert(StockNotification config, String stockName, BigDecimal latestPrice) {
+        MacdAlertParams params = parseMacdAlertParams(config.getParams(), false);
+        if (params == null || config.getId() == null || latestPrice == null || latestPrice.signum() <= 0) {
+            log.warn("Invalid MACD params or price for notification {}: {}", config.getId(), config.getParams());
+            return;
+        }
+
+        int needDays = macdWarmupDays(params) + 2;
+        List<StockQuoteHistory> history = stockQuoteHistoryRepository.findLatestByCode(
+                StockUtils.wrapExchangePrefix(config.getStockCode()), needDays - 1
+        );
+        if (history.size() < needDays - 1) {
+            return;
+        }
+
+        Collections.reverse(history);
+        List<BigDecimal> prices = new ArrayList<>(history.stream().map(StockQuoteHistory::getClosePrice).toList());
+        prices.add(latestPrice);
+        checkMacdTransition(
+                config, stockName, latestPrice, "当前价", params,
+                history.get(history.size() - 1).getTradeDate(), calculateMacdRelations(prices, params)
+        );
+    }
+
+    private void checkFundMacdAlert(StockNotification config, String fundName, BigDecimal latestNetValue) {
+        MacdAlertParams params = parseMacdAlertParams(config.getParams(), false);
+        if (params == null || config.getId() == null || latestNetValue == null || latestNetValue.signum() <= 0) {
+            log.warn("Invalid fund MACD params or net value for notification {}: {}", config.getId(), config.getParams());
+            return;
+        }
+
+        int needDays = macdWarmupDays(params) + 2;
+        List<StockFundNetValue> history = stockFundNetValueRepository.findLatestByFundCode(
+                config.getStockCode(), PageRequest.of(0, needDays)
+        );
+        if (history.size() < needDays) {
+            return;
+        }
+
+        String historyAnchor = history.get(0).getNavDate().toString();
+        List<StockFundNetValue> orderedHistory = new ArrayList<>(history);
+        Collections.reverse(orderedHistory);
+        checkMacdTransition(
+                config, fundName, latestNetValue, "最新净值", params, historyAnchor,
+                calculateMacdRelations(orderedHistory.stream().map(StockFundNetValue::getUnitNav).toList(), params)
+        );
+    }
+
+    private void checkMacdTransition(
+            StockNotification config, String targetName, BigDecimal latestValue, String valueLabel,
+            MacdAlertParams params, String historyAnchor, int[] relations
+    ) {
+        MacdRuntimeState state = macdRuntimeStateMap.get(config.getId());
+        if (state == null || !Objects.equals(state.getHistoryAnchor(), historyAnchor)
+                || !Objects.equals(state.getParams(), config.getParams())) {
+            state = new MacdRuntimeState(
+                    historyAnchor, config.getParams(), relations[0],
+                    System.currentTimeMillis() + OBSERVED_PRICE_TTL_MILLIS
+            );
+            macdRuntimeStateMap.put(config.getId(), state);
+        }
+
+        String signal = null;
+        synchronized (state) {
+            if (state.getRelation() <= 0 && relations[1] > 0) {
+                signal = "UP";
+            } else if (state.getRelation() >= 0 && relations[1] < 0) {
+                signal = "DOWN";
+            }
+            state.setRelation(relations[1]);
+            state.setExpiredAtMillis(System.currentTimeMillis() + OBSERVED_PRICE_TTL_MILLIS);
+        }
+
+        if (signal == null || !(GRID_DIRECTION_BOTH.equals(params.getDirection())
+                || params.getDirection().equals(signal)) || !isCoolDownPassed(config)) {
+            return;
+        }
+
+        String signalName = "UP".equals(signal) ? "金叉" : "死叉";
+        sendNotify(config, String.format(
+                "【策略通知】%s(%s) 触发MACD(%d, %d, %d) %s信号，%s %s",
+                targetName, config.getStockCode(), params.getFastPeriod(), params.getSlowPeriod(),
+                params.getSignalPeriod(), signalName, valueLabel, formatDecimal(latestValue)
+        ));
+        updateLastNotifyTime(config);
+    }
+
+    private int[] calculateMacdRelations(List<BigDecimal> prices, MacdAlertParams params) {
+        double fastEma = prices.get(0).doubleValue();
+        double slowEma = fastEma;
+        double dea = 0D;
+        double fastAlpha = 2D / (params.getFastPeriod() + 1D);
+        double slowAlpha = 2D / (params.getSlowPeriod() + 1D);
+        double signalAlpha = 2D / (params.getSignalPeriod() + 1D);
+        int previousRelation = 0;
+        int currentRelation = 0;
+
+        for (int i = 1; i < prices.size(); i++) {
+            double close = prices.get(i).doubleValue();
+            fastEma += fastAlpha * (close - fastEma);
+            slowEma += slowAlpha * (close - slowEma);
+            double dif = fastEma - slowEma;
+            dea += signalAlpha * (dif - dea);
+            int relation = Double.compare(dif - dea, 0D);
+            if (i == prices.size() - 2) {
+                previousRelation = relation;
+            } else if (i == prices.size() - 1) {
+                currentRelation = relation;
+            }
+        }
+        return new int[]{previousRelation, currentRelation};
+    }
+
+    private int macdWarmupDays(MacdAlertParams params) {
+        return params.getSlowPeriod() * 3 + params.getSignalPeriod();
+    }
+
+    private void checkStockGridAlert(StockNotification config, String stockName, BigDecimal latestPrice) {
+        GridAlertParams params = parseGridAlertParams(config.getParams(), false);
+        if (params == null || config.getId() == null) {
+            log.warn("Invalid grid params for notification {}: {}", config.getId(), config.getParams());
+            return;
+        }
+
+        String historyCode = StockUtils.wrapExchangePrefix(config.getStockCode());
+        List<StockQuoteHistory> history = stockQuoteHistoryRepository.findLatestByCode(
+                historyCode, GRID_HISTORY_DAYS
+        );
+        if (history.isEmpty()) {
+            return;
+        }
+        Collections.reverse(history);
+        String historyAnchor = history.get(history.size() - 1).getTradeDate();
+        GridRuntimeState state = getGridRuntimeState(
+                config, params, historyAnchor,
+                history.stream().map(StockQuoteHistory::getClosePrice).toList()
+        );
+        checkGridTransition(config, stockName, latestPrice, "当前价", params, state);
+    }
+
+    private void checkFundGridAlert(StockNotification config, String fundName, BigDecimal latestNetValue) {
+        GridAlertParams params = parseGridAlertParams(config.getParams(), false);
+        if (params == null || config.getId() == null) {
+            log.warn("Invalid fund grid params for notification {}: {}", config.getId(), config.getParams());
+            return;
+        }
+
+        // 最新一条净值就是本次待检测价格，使用它之前的净值重放网格状态。
+        List<StockFundNetValue> history = stockFundNetValueRepository.findLatestByFundCode(
+                config.getStockCode(), PageRequest.of(0, GRID_HISTORY_DAYS + 1)
+        );
+        if (history.size() < 2) {
+            return;
+        }
+        String historyAnchor = history.get(0).getNavDate().toString();
+        List<StockFundNetValue> previousHistory = new ArrayList<>(history.subList(1, history.size()));
+        Collections.reverse(previousHistory);
+        List<BigDecimal> previousNetValues = previousHistory.stream()
+                .map(StockFundNetValue::getUnitNav)
+                .toList();
+        GridRuntimeState state = getGridRuntimeState(
+                config, params, historyAnchor, previousNetValues
+        );
+        checkGridTransition(config, fundName, latestNetValue, "最新净值", params, state);
+    }
+
+    private GridRuntimeState getGridRuntimeState(
+            StockNotification config, GridAlertParams params, String historyAnchor, List<BigDecimal> historyPrices
+    ) {
+        GridRuntimeState existing = gridRuntimeStateMap.get(config.getId());
+        if (existing != null
+                && Objects.equals(existing.getHistoryAnchor(), historyAnchor)
+                && Objects.equals(existing.getParams(), config.getParams())) {
+            existing.setExpiredAtMillis(System.currentTimeMillis() + OBSERVED_PRICE_TTL_MILLIS);
+            return existing;
+        }
+
+        BigDecimal referencePrice = historyPrices.get(0);
+        int positionLevel = 0;
+        for (int i = 1; i < historyPrices.size(); i++) {
+            BigDecimal price = historyPrices.get(i);
+            BigDecimal buyTrigger = referencePrice.multiply(BigDecimal.ONE.subtract(params.getGridRate()));
+            BigDecimal sellTrigger = referencePrice.multiply(BigDecimal.ONE.add(params.getGridRate()));
+            if (price.compareTo(buyTrigger) <= 0 && positionLevel < params.getGridCount()) {
+                referencePrice = buyTrigger;
+                positionLevel++;
+            } else if (price.compareTo(sellTrigger) >= 0 && positionLevel > -params.getGridCount()) {
+                referencePrice = sellTrigger;
+                positionLevel--;
+            }
+        }
+
+        GridRuntimeState state = new GridRuntimeState(
+                historyAnchor, config.getParams(), referencePrice, positionLevel,
+                System.currentTimeMillis() + OBSERVED_PRICE_TTL_MILLIS
+        );
+        gridRuntimeStateMap.put(config.getId(), state);
+        return state;
+    }
+
+    private void checkGridTransition(
+            StockNotification config, String targetName, BigDecimal latestValue, String valueLabel,
+            GridAlertParams params, GridRuntimeState state
+    ) {
+        GridTransition transition;
+        synchronized (state) {
+            transition = advanceGridState(state, latestValue, params);
+        }
+        if (transition == null || !acceptsGridDirection(params, transition.getDirection())
+                || !isCoolDownPassed(config)) {
+            return;
+        }
+
+        String action = GRID_DIRECTION_BUY.equals(transition.getDirection()) ? "买入" : "卖出";
+        String levelText = transition.getCrossedLevels() > 1
+                ? "连续触发" + transition.getCrossedLevels() + "档" : "触发";
+        sendNotify(config, String.format(
+                "【网格信号】%s(%s) %s%s网格，网格价 %s，%s %s，当前仓位层级 %d",
+                targetName, config.getStockCode(), levelText, action,
+                formatDecimal(transition.getTriggerPrice()), valueLabel, formatDecimal(latestValue),
+                transition.getPositionLevel()
+        ));
+        updateLastNotifyTime(config);
+    }
+
+    private GridTransition advanceGridState(
+            GridRuntimeState state, BigDecimal latestValue, GridAlertParams alertParams
+    ) {
+        int crossedLevels = 0;
+        String direction = null;
+        BigDecimal triggerPrice = null;
+
+        while (state.getPositionLevel() < alertParams.getGridCount()) {
+            BigDecimal nextBuyPrice = state.getReferencePrice().multiply(
+                    BigDecimal.ONE.subtract(alertParams.getGridRate())
+            );
+            if (latestValue.compareTo(nextBuyPrice) > 0) {
+                break;
+            }
+            state.setReferencePrice(nextBuyPrice);
+            state.setPositionLevel(state.getPositionLevel() + 1);
+            crossedLevels++;
+            direction = GRID_DIRECTION_BUY;
+            triggerPrice = nextBuyPrice;
+        }
+        if (crossedLevels == 0) {
+            while (state.getPositionLevel() > -alertParams.getGridCount()) {
+                BigDecimal nextSellPrice = state.getReferencePrice().multiply(
+                        BigDecimal.ONE.add(alertParams.getGridRate())
+                );
+                if (latestValue.compareTo(nextSellPrice) < 0) {
+                    break;
+                }
+                state.setReferencePrice(nextSellPrice);
+                state.setPositionLevel(state.getPositionLevel() - 1);
+                crossedLevels++;
+                direction = GRID_DIRECTION_SELL;
+                triggerPrice = nextSellPrice;
+            }
+        }
+        state.setExpiredAtMillis(System.currentTimeMillis() + OBSERVED_PRICE_TTL_MILLIS);
+        return crossedLevels == 0 ? null
+                : new GridTransition(direction, triggerPrice, crossedLevels, state.getPositionLevel());
+    }
+
+    private boolean acceptsGridDirection(GridAlertParams params, String signalDirection) {
+        return GRID_DIRECTION_BOTH.equals(params.getDirection())
+                || params.getDirection().equals(signalDirection);
+    }
+
     private boolean isCoolDownPassed(StockNotification config) {
         if (config.getLastNotifyAt() == null) return true;
 
@@ -445,9 +745,78 @@ public class StockNotificationService {
         }
     }
 
-    private void clearLastObservedPrice(Long notificationId) {
+    private GridAlertParams parseGridAlertParams(String paramsText, boolean strict) {
+        try {
+            JsonNode params = objectMapper.readTree(paramsText);
+            String direction = params.path(CONDITION).asText(GRID_DIRECTION_BOTH).toUpperCase();
+            BigDecimal gridPercent = params.path(GRID_PERCENT).decimalValue();
+            int gridCount = params.path(GRID_COUNT).asInt(0);
+            boolean directionValid = GRID_DIRECTION_BOTH.equals(direction)
+                    || GRID_DIRECTION_BUY.equals(direction) || GRID_DIRECTION_SELL.equals(direction);
+            if (!directionValid || gridPercent.compareTo(BigDecimal.ZERO) <= 0
+                    || gridPercent.compareTo(new BigDecimal("50")) >= 0
+                    || gridCount < 1 || gridCount > 50) {
+                throw new IllegalArgumentException("invalid grid params");
+            }
+            return new GridAlertParams(direction, gridPercent.movePointLeft(2), gridCount);
+        } catch (Exception e) {
+            if (strict) {
+                throw new BusinessException(ExceptionEnum.STOCK_NOTIFICATION_GRID_PARAMS_ILLEGAL);
+            }
+            return null;
+        }
+    }
+
+    private String normalizeGridAlertParams(String paramsText) {
+        GridAlertParams params = parseGridAlertParams(paramsText, true);
+        return objectMapper.createObjectNode()
+                .put(CONDITION, params.getDirection())
+                .put(GRID_PERCENT, params.getGridRate().movePointRight(2))
+                .put(GRID_COUNT, params.getGridCount())
+                .toString();
+    }
+
+    private MacdAlertParams parseMacdAlertParams(String paramsText, boolean strict) {
+        try {
+            JsonNode params = objectMapper.readTree(paramsText);
+            String direction = params.path(CONDITION).asText(GRID_DIRECTION_BOTH).toUpperCase();
+            int fastPeriod = params.path(MACD_FAST_PERIOD).asInt(12);
+            int slowPeriod = params.path(MACD_SLOW_PERIOD).asInt(26);
+            int signalPeriod = params.path(MACD_SIGNAL_PERIOD).asInt(9);
+            boolean directionValid = GRID_DIRECTION_BOTH.equals(direction)
+                    || "UP".equals(direction) || "DOWN".equals(direction);
+            if (!directionValid || fastPeriod <= 0 || slowPeriod <= 0 || signalPeriod <= 0
+                    || fastPeriod >= slowPeriod) {
+                throw new IllegalArgumentException("invalid MACD params");
+            }
+            return new MacdAlertParams(direction, fastPeriod, slowPeriod, signalPeriod);
+        } catch (Exception e) {
+            if (strict) {
+                throw new BusinessException(ExceptionEnum.STOCK_NOTIFICATION_MACD_PARAMS_ILLEGAL);
+            }
+            return null;
+        }
+    }
+
+    private String normalizeMacdAlertParams(String paramsText) {
+        MacdAlertParams params = parseMacdAlertParams(paramsText, true);
+        return objectMapper.createObjectNode()
+                .put(CONDITION, params.getDirection())
+                .put(MACD_FAST_PERIOD, params.getFastPeriod())
+                .put(MACD_SLOW_PERIOD, params.getSlowPeriod())
+                .put(MACD_SIGNAL_PERIOD, params.getSignalPeriod())
+                .toString();
+    }
+
+    private String formatDecimal(BigDecimal value) {
+        return value.stripTrailingZeros().toPlainString();
+    }
+
+    private void clearRuntimeState(Long notificationId) {
         if (notificationId != null) {
             lastObservedPriceMap.remove(notificationId);
+            gridRuntimeStateMap.remove(notificationId);
+            macdRuntimeStateMap.remove(notificationId);
         }
     }
 
@@ -468,6 +837,18 @@ public class StockNotificationService {
             ObservedPrice observedPrice = entry.getValue();
             if (observedPrice != null && observedPrice.expiredAtMillis() <= now) {
                 lastObservedPriceMap.remove(entry.getKey(), observedPrice);
+            }
+        }
+        for (Map.Entry<Long, GridRuntimeState> entry : gridRuntimeStateMap.entrySet()) {
+            GridRuntimeState state = entry.getValue();
+            if (state != null && state.getExpiredAtMillis() <= now) {
+                gridRuntimeStateMap.remove(entry.getKey(), state);
+            }
+        }
+        for (Map.Entry<Long, MacdRuntimeState> entry : macdRuntimeStateMap.entrySet()) {
+            MacdRuntimeState state = entry.getValue();
+            if (state != null && state.getExpiredAtMillis() <= now) {
+                macdRuntimeStateMap.remove(entry.getKey(), state);
             }
         }
     }

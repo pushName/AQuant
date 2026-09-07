@@ -5,7 +5,7 @@ export interface StockNotificationReq {
     id?: number;
     stockCode: string;
     assetType?: 'STOCK' | 'FUND';
-    type: number; // 1: 价格/净值通知, 2: 双均线策略
+    type: number; // 1: 价格/净值通知, 2: 双均线策略, 3: 网格交易, 4: MACD策略
     thresholdValue?: number;
     params?: string;
     isEnabled?: number;

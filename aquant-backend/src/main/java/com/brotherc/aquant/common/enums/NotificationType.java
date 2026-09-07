@@ -8,7 +8,9 @@ import lombok.Getter;
 public enum NotificationType {
 
     PRICE(1, "价格通知"),
-    DUAL_MA(2, "双均线策略");
+    DUAL_MA(2, "双均线策略"),
+    GRID(3, "网格交易"),
+    MACD(4, "MACD策略");
 
     private final Integer type;
     private final String description;
