@@ -23,7 +23,6 @@ import org.springframework.util.CollectionUtils;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +64,12 @@ public class StockIndustryBoardEmSyncService {
             log.warn("东方财富行业列表为空，保留缓存");
             return;
         }
-        saveBoards(boards, now);
+        try {
+            saveBoards(boards, now);
+        } catch (RuntimeException exception) {
+            log.warn("东方财富行业列表落库失败，保留缓存等待下次触发", exception);
+            return;
+        }
         boolean completed = true;
         for (StockBoardIndustryNameEm board : boards) {
             if (board == null || board.getSectorName() == null || board.getSectorName().isBlank()) {
@@ -80,13 +84,17 @@ public class StockIndustryBoardEmSyncService {
             log.warn("东方财富行业同步未完整成功，保留既有水位");
             return;
         }
-        StockSync watermark = stockSyncRepository.findByName(WATERMARK);
-        if (watermark == null) {
-            watermark = new StockSync();
-            watermark.setName(WATERMARK);
+        try {
+            StockSync watermark = stockSyncRepository.findByName(WATERMARK);
+            if (watermark == null) {
+                watermark = new StockSync();
+                watermark.setName(WATERMARK);
+            }
+            watermark.setValue(String.valueOf(targetWatermark));
+            stockSyncRepository.save(watermark);
+        } catch (RuntimeException exception) {
+            log.warn("东方财富行业同步水位写入失败，等待下次触发", exception);
         }
-        watermark.setValue(String.valueOf(targetWatermark));
-        stockSyncRepository.save(watermark);
     }
 
     private boolean synchronizeBoard(String sectorName, LocalDate targetTradeDate, LocalDateTime now) {
@@ -144,7 +152,8 @@ public class StockIndustryBoardEmSyncService {
     void saveBoards(List<StockBoardIndustryNameEm> boards, LocalDateTime now) {
         Map<String, StockIndustryBoardEm> existing = boardRepository.findAll().stream()
                 .collect(Collectors.toMap(StockIndustryBoardEm::getSectorCode, item -> item, (first, second) -> first));
-        List<StockIndustryBoardEm> saves = new ArrayList<>();
+        // 上游按涨跌幅排序分页拼接，排名变动会使页边界板块在单次响应中重复出现，须批内去重
+        Map<String, StockIndustryBoardEm> saves = new LinkedHashMap<>();
         for (StockBoardIndustryNameEm board : boards) {
             if (board == null || board.getSectorName() == null || board.getSectorName().isBlank()) {
                 continue;
@@ -165,9 +174,9 @@ public class StockIndustryBoardEmSyncService {
             entity.setLeadingStockChangePercent(board.getLeadingStockChangePercent());
             entity.setTradeDate(stockHelper.latestTradeDayFallback(now.toLocalDate()));
             entity.setCreateTime(now);
-            saves.add(entity);
+            saves.put(board.getSectorCode(), entity);
         }
-        boardRepository.saveAll(saves);
+        boardRepository.saveAll(saves.values());
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -175,7 +184,7 @@ public class StockIndustryBoardEmSyncService {
         Map<String, StockIndustryBoardHistoryEm> existing = historyRepository
                 .findBySectorNameOrderByTradeDateAsc(sectorName).stream()
                 .collect(Collectors.toMap(StockIndustryBoardHistoryEm::getTradeDate, item -> item, (first, second) -> first));
-        List<StockIndustryBoardHistoryEm> saves = new ArrayList<>();
+        Map<String, StockIndustryBoardHistoryEm> saves = new LinkedHashMap<>();
         for (StockBoardIndustryHistEm item : source) {
             if (item == null || item.getTradeDate() == null || item.getTradeDate().isBlank()) {
                 continue;
@@ -192,9 +201,9 @@ public class StockIndustryBoardEmSyncService {
             entity.setChangeAmount(item.getChangeAmount());
             entity.setChangePercent(item.getChangePercent());
             entity.setCreateTime(now);
-            saves.add(entity);
+            saves.put(item.getTradeDate(), entity);
         }
-        historyRepository.saveAll(saves);
+        historyRepository.saveAll(saves.values());
     }
 
     @Transactional(rollbackFor = Exception.class)
