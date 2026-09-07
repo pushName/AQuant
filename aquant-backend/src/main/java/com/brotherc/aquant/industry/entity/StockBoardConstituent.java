@@ -10,28 +10,38 @@ import java.time.LocalDateTime;
  */
 @Data
 @Entity
-@Table(
-        name = "stock_board_constituent",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_board_constituent_stock",
-                columnNames = {"board_code", "stock_code"}
-        )
-)
+@Table(name = "stock_board_constituent")
 public class StockBoardConstituent {
 
+    /**
+     * 主键 ID
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "board_code", nullable = false)
+    /**
+     * 行业板块代码
+     */
+    @Column(name = "board_code")
     private String boardCode;
 
-    @Column(name = "stock_code", nullable = false)
+    /**
+     * 成分股票代码
+     */
+    @Column(name = "stock_code")
     private String stockCode;
 
-    @Column(name = "stock_name", nullable = false)
+    /**
+     * 成分股票名称
+     */
+    @Column(name = "stock_name")
     private String stockName;
 
-    @Column(name = "source_updated_at", nullable = false)
+    /**
+     * 数据源更新时间
+     */
+    @Column(name = "source_updated_at")
     private LocalDateTime sourceUpdatedAt;
+
 }

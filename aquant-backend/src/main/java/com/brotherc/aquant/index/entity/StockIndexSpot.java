@@ -14,6 +14,9 @@ import java.time.LocalDateTime;
 @Table(name = "stock_index_spot")
 public class StockIndexSpot {
 
+    /**
+     * 主键 ID
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -61,13 +64,13 @@ public class StockIndexSpot {
     private BigDecimal openPrice;
 
     /**
-     * 最高
+     * 最高价
      */
     @Column(name = "high_price")
     private BigDecimal highPrice;
 
     /**
-     * 最低
+     * 最低价
      */
     @Column(name = "low_price")
     private BigDecimal lowPrice;
@@ -85,7 +88,7 @@ public class StockIndexSpot {
     private BigDecimal turnover;
 
     /**
-     * 创建 / 更新时间
+     * 创建时间
      */
     @Column(name = "created_at")
     private LocalDateTime createdAt;

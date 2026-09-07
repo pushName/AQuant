@@ -11,12 +11,12 @@ import java.time.LocalDateTime;
  */
 @Data
 @Entity
-@Table(name = "stock_industry_board_history", indexes = {
-        @Index(name = "idx_industry_history_trade_date", columnList = "trade_date"),
-        @Index(name = "idx_industry_history_sector_date", columnList = "sector_name, trade_date")
-})
+@Table(name = "stock_industry_board_history")
 public class StockIndustryBoardHistory {
 
+    /**
+     * 主键 ID
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
