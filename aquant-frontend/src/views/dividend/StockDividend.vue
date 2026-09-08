@@ -1087,8 +1087,8 @@ onMounted(() => {
 .dividend-history-table-wrap {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  max-height: 260px;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .dividend-history-table {

@@ -35,6 +35,7 @@ import com.brotherc.aquant.stock.service.StockAbnormalService;
 import com.brotherc.aquant.stock.service.StockQuoteHistoryService;
 import com.brotherc.aquant.stock.service.StockQuoteService;
 import com.brotherc.aquant.stock.service.StockShareChangeService;
+import com.brotherc.aquant.stock.service.StockTradeCalendarService;
 import com.brotherc.aquant.strategy.service.StockStrategySnapshotService;
 import com.brotherc.aquant.sync.service.StockSyncService;
 import com.brotherc.aquant.common.utils.StockHelper;
@@ -85,6 +86,7 @@ public class StockSyncTask {
     private final StockDupontAnalysisService stockDupontAnalysisService;
     private final StockGrowthMetricsService stockGrowthMetricsService;
     private final StockShareChangeService stockShareChangeService;
+    private final StockTradeCalendarService stockTradeCalendarService;
     private final StockIndexService stockIndexService;
     private final StockIndustryBoardHistoryService stockIndustryBoardHistoryService;
     private final StockBoardConstituentSyncService stockBoardConstituentSyncService;
@@ -105,6 +107,7 @@ public class StockSyncTask {
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         clearDelistedStockData();
+        stockTradeCalendarService.syncAStockNonTradeDays();
         syncStackDtaLatest();
         stockValuationMetricsService.refreshValuationMetrics();
         stockDupontAnalysisService.refreshDupontAnalysis();

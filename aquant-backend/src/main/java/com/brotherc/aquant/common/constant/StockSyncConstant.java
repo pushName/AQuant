@@ -7,6 +7,8 @@ public class StockSyncConstant {
 
     public static final String STOCK_DAILY_LATEST = "stock_daily_latest";
 
+    public static final String STOCK_TRADE_CALENDAR_LATEST = "stock_trade_calendar_latest";
+
     public static final String STOCK_BOARD_INDUSTRY_LATEST = "stock_board_industry_latest";
 
     public static final String STOCK_BOARD_CONSTITUENT_LATEST_PREFIX = "stock_board_constituent_latest:";

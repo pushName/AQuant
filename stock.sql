@@ -691,7 +691,8 @@ CREATE TABLE `stock_trade_calendar` (
   `trade_date` varchar(10) NOT NULL COMMENT '非交易日日期，如 2025-10-01',
   `market` varchar(10) NOT NULL DEFAULT 'A' COMMENT '市场类型：A-沪深京',
   `remark` varchar(100) DEFAULT NULL COMMENT '备注，如 国庆节 / 春节',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_stock_trade_calendar_market_date` (`market`,`trade_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='股票非交易日历（仅记录非交易日）';
 
 DROP TABLE IF EXISTS `stock_valuation_metrics`;
