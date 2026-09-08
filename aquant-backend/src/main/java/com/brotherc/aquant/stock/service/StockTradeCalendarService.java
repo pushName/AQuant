@@ -1,6 +1,7 @@
 package com.brotherc.aquant.stock.service;
 
 import com.brotherc.aquant.common.constant.StockSyncConstant;
+import com.brotherc.aquant.common.utils.DateUtils;
 import com.brotherc.aquant.common.utils.StockUtils;
 import com.brotherc.aquant.integration.akshare.model.ToolTradeDateHistSina;
 import com.brotherc.aquant.integration.akshare.service.AKShareService;
@@ -59,10 +60,9 @@ public class StockTradeCalendarService {
         Set<LocalDate> tradeDates = new HashSet<>();
         for (ToolTradeDateHistSina item : tradeDateHistSinaList) {
             if (item != null && StringUtils.isNotBlank(item.getTradeDate())) {
-                try {
-                    tradeDates.add(LocalDate.parse(item.getTradeDate()));
-                } catch (Exception e) {
-                    log.warn("AKShare A股交易日历日期格式异常，tradeDate={}", item.getTradeDate());
+                LocalDate tradeDate = DateUtils.parseLocalDate(item.getTradeDate());
+                if (tradeDate != null) {
+                    tradeDates.add(tradeDate);
                 }
             }
         }

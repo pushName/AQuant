@@ -12,7 +12,7 @@ import lombok.Data;
 public class ToolTradeDateHistSina {
 
     /**
-     * 交易日期，格式 yyyy-MM-dd。
+     * 交易日期，AKShare 通常返回 yyyy-MM-ddTHH:mm:ss.SSS 格式。
      */
     @JsonProperty("trade_date")
     private String tradeDate;
