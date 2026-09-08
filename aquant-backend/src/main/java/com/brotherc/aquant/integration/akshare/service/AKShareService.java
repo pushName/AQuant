@@ -21,6 +21,15 @@ public class AKShareService extends AbstractAKShareService {
         return executeGet(akshareAddress + "/api/public/stock_zh_a_spot", new TypeReference<>() {});
     }
 
+    /**
+     * <a href="https://akshare.akfamily.xyz/data/tool/tool.html#id1">交易日历-新浪</a>
+     *
+     * @return A 股交易日列表
+     */
+    public List<ToolTradeDateHistSina> toolTradeDateHistSina() {
+        return executeGet(akshareAddress + "/api/public/tool_trade_date_hist_sina", new TypeReference<>() {});
+    }
+
     public List<StockZhIndexSpotSina> stockZhIndexSpotSina() {
         return executeGet(akshareAddress + "/api/public/stock_zh_index_spot_sina", new TypeReference<>() {});
     }
